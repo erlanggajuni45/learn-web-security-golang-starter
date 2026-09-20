@@ -3,6 +3,8 @@ package reviews
 import (
 	"net/http"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/bootdotdev/learn-web-security/internal/accounts"
 	"github.com/bootdotdev/learn-web-security/internal/auth/sessions"
@@ -97,7 +99,7 @@ func (handler *Handler) Edit(responseWriter http.ResponseWriter, request *http.R
 	if !ok {
 		return
 	}
-	review, found := handler.requireReview(responseWriter, request)
+	review, found := handler.requireReview(responseWriter, request, current)
 	if !found {
 		return
 	}
@@ -111,7 +113,7 @@ func (handler *Handler) Update(responseWriter http.ResponseWriter, request *http
 	if !ok || !handler.verifyCSRF(responseWriter, request, current.Session.CSRFToken) {
 		return
 	}
-	review, found := handler.requireReview(responseWriter, request)
+	review, found := handler.requireReview(responseWriter, request, current)
 	if !found {
 		return
 	}
@@ -147,7 +149,7 @@ func (handler *Handler) Delete(responseWriter http.ResponseWriter, request *http
 	if !ok || !handler.verifyCSRF(responseWriter, request, current.Session.CSRFToken) {
 		return
 	}
-	review, found := handler.requireReview(responseWriter, request)
+	review, found := handler.requireReview(responseWriter, request, current)
 	if !found {
 		return
 	}
@@ -158,7 +160,7 @@ func (handler *Handler) Delete(responseWriter http.ResponseWriter, request *http
 	http.Redirect(responseWriter, request, "/account/reviews", http.StatusFound)
 }
 
-func (handler *Handler) requireReview(responseWriter http.ResponseWriter, request *http.Request) (Review, bool) {
+func (handler *Handler) requireReview(responseWriter http.ResponseWriter, request *http.Request, current accounts.CurrentSession) (Review, bool) {
 	reviewID, valid := httpx.ParseSafeInteger(request.PathValue("id"))
 	if !valid {
 		handler.reviewNotFound(responseWriter)
@@ -169,7 +171,7 @@ func (handler *Handler) requireReview(responseWriter http.ResponseWriter, reques
 		handler.internalError(responseWriter, request, err)
 		return Review{}, false
 	}
-	if !found {
+	if !found || review.UserID != current.User.ID {
 		handler.reviewNotFound(responseWriter)
 		return Review{}, false
 	}
@@ -233,5 +235,10 @@ func parseRating(value string) (int64, bool) {
 }
 
 func parseBody(value string) (string, bool) {
-	return value, value != ""
+	trim := strings.TrimSpace(value)
+
+	if utf8.RuneCountInString(trim) > 1000 || trim == "" {
+		return "", false
+	}
+	return trim, true
 }
